@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malifaux Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+            background-color: #333333; /* Dark grey background */
+            color: white; /* Default text color to white */
+        }
+        .input-group {
+            margin: 10px 0;
+            display: inline-block;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            padding: 10px;
+            width: 80%;
+            font-size: 1.2em;
+            text-align: center;
+        }
+        /* Pale greyish blue background for "My Stat", "My Total", and "My Flip" */
+        #myStat, #myFlip, #myTotal {
+            background-color: #D0D8E1;
+        }
+        /* Light pink background for "My Enemy Total" */
+        #myEnemyTotal {
+            background-color: #F8D4D9;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            margin-top: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .reset-button {
+            padding: 5px 10px;
+            font-size: 0.9em;
+            background-color: #f44336;
+            margin-top: 5px;
+        }
+        .reset-button:hover {
+            background-color: #e41c1c;
+        }
+        .cheatsheet {
+            margin-top: 20px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .cheatsheet h2 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: black; /* Set text color to black for damage flip rules */
+        }
+        .cheatsheet ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .cheatsheet li {
+            margin: 5px 0;
+            color: black; /* Set text color to black for list items */
+        }
+        #flipInfo {
+            font-size: 1.5em;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 20px;
+        }
+        .winning {
+            color: green;
+        }
+        .losing {
+            color: red;
+        }
+        .cell {
+            display: inline-block;
+            padding: 10px;
+            background-color: white;
+            color: black;
+            width: 80%;
+            text-align: center;
+            font-size: 1.2em;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="input-group">
+        <label for="myStat">My Stat</label>
+        <input type="number" id="myStat" oninput="calculateTotal()" step="1" onkeydown="moveFocus(event, 'myFlip')">
+        <button class="reset-button" onclick="resetField('myStat')">Reset</button>
+    </div>
+    <div class="input-group">
+        <label for="myFlip">My Flip</label>
+        <input type="number" id="myFlip" oninput="calculateTotal()" step="1" onkeydown="moveFocus(event, 'myEnemyTotal')">
+        <button class="reset-button" onclick="resetField('myFlip')">Reset</button>
+    </div>
+    <div class="input-group">
+        <label for="myTotal">My Total</label>
+        <!-- Changed to regular text inside a cell with white background -->
+        <div id="myTotal" class="cell">0</div>
+    </div>
+    <div class="input-group">
+        <label for="myEnemyTotal">My Enemy Total</label>
+        <input type="number" id="myEnemyTotal" oninput="calculateComparison()" step="1" onkeydown="moveFocus(event, 'comparisonResult')">
+        <button class="reset-button" onclick="resetField('myEnemyTotal')">Reset</button>
+    </div>
+    <div class="input-group">
+        <label for="comparisonResult">Comparison (Enemy Total - My Total)</label>
+        <!-- Changed to regular text inside a cell with white background -->
+        <div id="comparisonResult" class="cell">0</div>
+    </div>
+    <p id="flipInfo"></p>
+
+    <div id="flipSuggestions"></div>
+    
+    <button onclick="newDuel()">New duel</button>
+
+    <div class="cheatsheet">
+        <h2>Damage Flip Rules</h2>
+        <ul>
+            <li><strong>Tied:</strong> The damage flip will suffer a double negative. <span id="minCardNeededTied"></span></li>
+            <li><strong>1 to 5:</strong> The damage flip will suffer a negative. <span id="minCardNeeded1to5"></span></li>
+            <li><strong>6 to 10:</strong> The damage flip has a straight flip. <span id="minCardNeeded6to10"></span></li>
+            <li><strong>11+:</strong> The damage flip will receive a plus. <span id="minCardNeeded11plus"></span></li>
+        </ul>
+    </div>
+
+    <script>
+        function calculateTotal() {
+            const myFlip = parseFloat(document.getElementById("myFlip").value) || 0;
+            const myStat = parseFloat(document.getElementById("myStat").value) || 0;
+            const myTotalField = document.getElementById("myTotal");
+            
+            const myTotal = myFlip + myStat; // Calculate My Total
+            myTotalField.textContent = myTotal; // Display the result
+
+            calculateComparison(); // Update comparison whenever the total is recalculated
+            calculateMinCard(); // Update the MinCard needed for "Tied"
+            calculateMinCard1to5(); // Update the MinCard needed for "1 to 5"
+            calculateMinCard6to10(); // Update the MinCard needed for "6 to 10"
+            calculateMinCard11plus(); // Update the MinCard needed for "11+"
+        }
+
+        function calculateComparison() {
+            const myTotal = parseFloat(document.getElementById("myTotal").textContent) || 0;
+            const myEnemyTotal = parseFloat(document.getElementById("myEnemyTotal").value) || 0;
+            const comparisonResult = myEnemyTotal - myTotal;
+
+            // Update Comparison field
+            const comparisonField = document.getElementById("comparisonResult");
+
+            // If comparison result is negative, display "Winning by"
+            if (comparisonResult < 0) {
+                comparisonField.textContent = `Winning by: ${Math.abs(comparisonResult)}`;
+            } else {
+                comparisonField.textContent = `Losing by: ${comparisonResult}`;
+            }
+
+            updateFlipInfo(comparisonResult); // Update the flip info
+            suggestFlipValues(comparisonResult); // Suggest flip values if losing
+        }
+
+        function updateFlipInfo(value) {
+            const flipInfo = document.getElementById("flipInfo");
+
+            if (value === 0) {
+                flipInfo.innerHTML = `<span class="winning">WINNING!</span> DOUBLE NEGATIVE FLIP`;
+            } else if (value >= -5 && value <= -1) {
+                flipInfo.innerHTML = `<span class="winning">WINNING!</span> NEGATIVE FLIP`;
+            } else if (value >= -10 && value <= -6) {
+                flipInfo.innerHTML = `<span class="winning">WINNING!</span> STRAIGHT FLIP`;  // Added WINNING! for STRAIGHT FLIP
+            } else if (value >= -18 && value <= -11) {
+                flipInfo.innerHTML = `<span class="winning">WINNING!</span> PLUS FLIP`;
+            } else {
+                flipInfo.textContent = ""; // Clear info for undefined states
+            }
+        }
+
+        function suggestFlipValues(value) {
+            const suggestionDiv = document.getElementById("flipSuggestions");
+            const myStat = parseFloat(document.getElementById("myStat").value) || 0;
+            const myEnemyTotal = parseFloat(document.getElementById("myEnemyTotal").value) || 0;
+
+            // Clear suggestions if the player is not losing
+            if (value <= 0) {
+                suggestionDiv.innerHTML = ""; // Clear if tied or winning
+                return;
+            }
+
+            // Calculate the flip required to tie
+            const tieFlip = myEnemyTotal - myStat;
+
+            // Calculate the flip required for a straight flip
+            const straightFlip = (myEnemyTotal + 6) - myStat;
+
+            // Display the suggestions with YOU ARE LOSING! in red
+            suggestionDiv.innerHTML = `
+                <h3><span class="losing">YOU ARE LOSING!</span></h3>
+                <p>To tie with the enemy, you need a <strong>${tieFlip}</strong> in "My Flip".</p>
+                <p>To achieve a straight flip, you need a <strong>${straightFlip}</strong> in "My Flip".</p>
+            `;
+
+            // Suggestion to DEFEND and WIN the duel when losing
+            if (value > 0) {
+                const defendWinFlip = myEnemyTotal - myStat + 1;
+                suggestionDiv.innerHTML += `
+                    <p><strong>To DEFEND and WIN the duel, you need a <strong>${defendWinFlip}</strong> in "My Flip".</strong></p>
+                `;
+            }
+        }
+
+        // Function to clear all fields and reset the form
+        function newDuel() {
+            document.getElementById("myFlip").value = '';
+            document.getElementById("myStat").value = '';
+            document.getElementById("myTotal").textContent = '0'; // Reset My Total
+            document.getElementById("myEnemyTotal").value = '';
+            document.getElementById("comparisonResult").textContent = '0'; // Reset Comparison
+            document.getElementById("flipInfo").textContent = '';
+            document.getElementById("flipSuggestions").innerHTML = ''; // Clear suggestions
+
+            // Scroll to the top of the page
+            window.scrollTo(0, 0); // Scrolls to the top (0, 0)
+        }
+
+        // Function to reset individual fields
+        function resetField(fieldId) {
+            document.getElementById(fieldId).value = '';
+            calculateTotal(); // Recalculate totals after resetting any field
+        }
+
+        // Function to move focus to the next field when Enter is pressed
+        function moveFocus(event, nextFieldId) {
+            if (event.key === "Enter") {
+                event.preventDefault(); // Prevent form submission if Enter is pressed
+                const nextField = document.getElementById(nextFieldId);
+
+                if (nextField) {
+                    nextField.focus(); // Focus on the next input field
+                } else {
+                    document.activeElement.blur(); // Remove the keyboard if no next field
+                }
+            }
+        }
+
+        // Calculate the MinCard value needed for "My Flip" to tie the results
+        function calculateMinCard() {
+            const myStat = parseFloat(document.getElementById("myStat").value) || 0;
+            const myEnemyTotal = parseFloat(document.getElementById("myEnemyTotal").value) || 0;
+
+            // Calculate the required value for "My Flip" to make the totals tie
+            const minCardNeeded = myEnemyTotal - myStat;
+
+            // Display the result in the "MinCard needed" span for "Tied"
+            document.getElementById("minCardNeededTied").textContent = `MinCard needed: ${minCardNeeded < 0 ? 'Reached' : minCardNeeded}`;
+        }
+
+        // Calculate the MinCard value needed for "My Flip" to fall within 1 to 5 (negative flip)
+        function calculateMinCard1to5() {
+            const myStat = parseFloat(document.getElementById("myStat").value) || 0;
+            const myEnemyTotal = parseFloat(document.getElementById("myEnemyTotal").value) || 0;
+
+            // Calculate the required value for "My Flip" to make the total fall within 1 to 5
+            const minCardNeeded = myEnemyTotal - myStat + 1;
+
+            // Display the result in the "MinCard needed" span for "1 to 5"
+            document.getElementById("minCardNeeded1to5").textContent = `MinCard needed: ${minCardNeeded < 0 ? 'Reached' : minCardNeeded}`;
+        }
+
+        // Calculate the MinCard value needed for "My Flip" to fall within 6 to 10 (straight flip)
+        function calculateMinCard6to10() {
+            const myStat = parseFloat(document.getElementById("myStat").value) || 0;
+            const myEnemyTotal = parseFloat(document.getElementById("myEnemyTotal").value) || 0;
+
+            // Calculate the required value for "My Flip" to make the total fall within 6 to 10
+            const minCardNeeded = myEnemyTotal - myStat + 6;
+
+            // Display the result in the "MinCard needed" span for "6 to 10"
+            document.getElementById("minCardNeeded6to10").textContent = `MinCard needed: ${minCardNeeded < 0 ? 'Reached' : minCardNeeded}`;
+        }
+
+        // Calculate the MinCard value needed for "My Flip" to fall within 11+ (plus flip)
+        function calculateMinCard11plus() {
+            const myStat = parseFloat(document.getElementById("myStat").value) || 0;
+            const myEnemyTotal = parseFloat(document.getElementById("myEnemyTotal").value) || 0;
+
+            // Calculate the required value for "My Flip" to make the total fall within 11+
+            const minCardNeeded = myEnemyTotal - myStat + 11;
+
+            // Display the result in the "MinCard needed" span for "11+"
+            document.getElementById("minCardNeeded11plus").textContent = `MinCard needed: ${minCardNeeded < 0 ? 'Reached' : minCardNeeded}`;
+        }
+
+        // Call this function whenever the "My Total" or "My Enemy Total" is updated
+        document.getElementById("myTotal").addEventListener("input", calculateMinCard);
+        document.getElementById("myEnemyTotal").addEventListener("input", calculateMinCard);
+        document.getElementById("myEnemyTotal").addEventListener("input", calculateMinCard1to5);
+        document.getElementById("myEnemyTotal").addEventListener("input", calculateMinCard6to10);
+        document.getElementById("myEnemyTotal").addEventListener("input", calculateMinCard11plus);
+    </script>
+</body>
+</html>
